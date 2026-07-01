@@ -1,0 +1,20 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: fraud-gateway-server
+  labels:
+    app: fraud-gateway-server
+    app.kubernetes.io/name: fraud-gateway-server
+  annotations:
+    description: External route for the Fraud Gateway mock server (Swagger UI at /swagger-ui.html)
+spec:
+  to:
+    kind: Service
+    name: fraud-gateway-server
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None

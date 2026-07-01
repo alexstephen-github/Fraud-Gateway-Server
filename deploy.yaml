@@ -1,0 +1,101 @@
+# Combined OpenShift resources referenced by devfile.yaml (kubernetes-deploy).
+# The {{CONTAINER_IMAGE}} placeholder is substituted by the devfile deploy flow.
+# For a plain `oc apply -f deploy.yaml`, replace {{CONTAINER_IMAGE}} with a real
+# image reference first (or use the per-resource files under openshift/).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fraud-gateway-server
+  labels:
+    app: fraud-gateway-server
+    app.kubernetes.io/name: fraud-gateway-server
+    app.kubernetes.io/part-of: payment-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fraud-gateway-server
+  template:
+    metadata:
+      labels:
+        app: fraud-gateway-server
+        app.kubernetes.io/name: fraud-gateway-server
+    spec:
+      containers:
+        - name: fraud-gateway-server
+          image: "{{CONTAINER_IMAGE}}"
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: JAVA_OPTS_APPEND
+              value: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "384Mi"
+            limits:
+              cpu: "1"
+              memory: "768Mi"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fraud-gateway-server
+  labels:
+    app: fraud-gateway-server
+    app.kubernetes.io/name: fraud-gateway-server
+spec:
+  selector:
+    app: fraud-gateway-server
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+  type: ClusterIP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: fraud-gateway-server
+  labels:
+    app: fraud-gateway-server
+    app.kubernetes.io/name: fraud-gateway-server
+  annotations:
+    description: External route for the Fraud Gateway mock server (Swagger UI at /swagger-ui.html)
+spec:
+  to:
+    kind: Service
+    name: fraud-gateway-server
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None

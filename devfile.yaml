@@ -1,0 +1,50 @@
+schemaVersion: 2.2.0
+metadata:
+  name: fraud-gateway-server
+  displayName: Fraud Gateway Server (Mock)
+  description: Mock server for the Payment Gateway Fraud Detection & Risk API
+  language: Java
+  projectType: Spring Boot
+  version: 2.0.0
+  provider: Payment Gateway
+  tags:
+    - Java
+    - Spring Boot
+    - Mock
+
+variables:
+  # Full image reference the build pushes to and the deployment pulls from.
+  # For OpenShift's internal registry, replace PROJECT with your namespace.
+  # The Web Console will typically pre-fill / override this for you.
+  CONTAINER_IMAGE: image-registry.openshift-image-registry.svc:5000/PROJECT/fraud-gateway-server:latest
+
+components:
+  # Outer-loop: build the container image from the repo Dockerfile.
+  - name: image-build
+    image:
+      imageName: "{{CONTAINER_IMAGE}}"
+      dockerfile:
+        uri: Dockerfile
+        buildContext: .
+        rootRequired: false
+
+  # Outer-loop: apply the Kubernetes/OpenShift resources.
+  - name: kubernetes-deploy
+    kubernetes:
+      uri: deploy.yaml
+
+commands:
+  - id: build-image
+    apply:
+      component: image-build
+  - id: deployk8s
+    apply:
+      component: kubernetes-deploy
+  - id: deploy
+    composite:
+      commands:
+        - build-image
+        - deployk8s
+      group:
+        kind: deploy
+        isDefault: true

@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fraud-gateway-server
+  labels:
+    app: fraud-gateway-server
+    app.kubernetes.io/name: fraud-gateway-server
+    app.kubernetes.io/part-of: payment-gateway
+  annotations:
+    # Auto-redeploy when the ImageStream tag is updated by a new build.
+    image.openshift.io/triggers: |
+      [{"from":{"kind":"ImageStreamTag","name":"fraud-gateway-server:latest"},"fieldPath":"spec.template.spec.containers[?(@.name==\"fraud-gateway-server\")].image"}]
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fraud-gateway-server
+  template:
+    metadata:
+      labels:
+        app: fraud-gateway-server
+        app.kubernetes.io/name: fraud-gateway-server
+    spec:
+      containers:
+        - name: fraud-gateway-server
+          # Replace with your image reference. When building in-cluster with the
+          # BuildConfig, this is populated automatically by the ImageStream trigger.
+          image: image-registry.openshift-image-registry.svc:5000/PROJECT/fraud-gateway-server:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: JAVA_OPTS_APPEND
+              value: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "384Mi"
+            limits:
+              cpu: "1"
+              memory: "768Mi"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault

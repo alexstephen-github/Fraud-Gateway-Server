@@ -1,0 +1,990 @@
+
+openapi: "3.1.0"
+info:
+  title: "Payment Gateway — Fraud Detection & Risk API"
+  version: "2.0.0"
+  description: "Standalone OpenAPI specification for the Payment Gateway Fraud Detection and\nRisk Management service. Covers real-time risk scoring, manual review workflows,\nand configurable fraud rules.\n\n## Authentication\nUse your secret API key via HTTP Basic Auth (username = key, password empty).\n\n## Rate Limiting\nFraud score endpoint: 500 req/sec per API key.\nAll other endpoints: 1000 req/min per API key.\n"
+  contact:
+    name: Payment Gateway Support
+    email: "api-support@paygateway.example.com"
+    url: "https://docs.paygateway.example.com/fraud"
+  license:
+    name: Proprietary
+    url: "https://paygateway.example.com/terms"
+servers:
+  - url: "https://kong-0fbe56105binevqxs.kongcloud.dev"
+    description: Production
+security:
+  - BasicAuth: []
+  - BearerAuth: []
+tags:
+  - name: Risk Scoring
+    description: Real-time fraud risk scoring for transactions
+  - name: Manual Review
+    description: Flag payments for manual review and approve/reject workflows
+  - name: Fraud Rules
+    description: "Configurable fraud detection rules (block, allow, review)"
+paths:
+  /fraud/score:
+    post:
+      tags:
+        - Risk Scoring
+      operationId: getFraudScore
+      summary: Get fraud risk score for a transaction
+      description: Returns a real-time risk score (0–100) and recommended action for a
+transaction before it is processed. Called automatically during payment
+authorization; can also be called independently for pre-screening.
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FraudScoreRequest"
+            examples:
+              card_payment:
+                summary: Standard card payment scoring
+                value:
+                  payment_method: pm_1A2B3C
+                  amount: 5000
+                  currency: USD
+                  customer_ip: "203.0.113.42"
+                  customer_email: "buyer@example.com"
+                  billing_address:
+                    line1: "123 Main St"
+                    city: Springfield
+                    state: IL
+                    postal_code: "62701"
+                    country: US
+      responses:
+        200:
+          description: Fraud score result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FraudScore"
+              examples:
+                low_risk:
+                  summary: Low risk transaction
+                  value:
+                    score: 12
+                    risk_level: low
+                    signals: []
+                    action: allow
+                    created_at: "2026-06-24T10:00:00Z"
+                high_risk:
+                  summary: High risk transaction
+                  value:
+                    score: 88
+                    risk_level: high
+                    signals:
+                      - type: ip_velocity
+                        description: IP address used in 15 transactions in last hour
+                      - type: card_country_mismatch
+                        description: Card issuer country differs from billing address country
+                    action: review
+                    created_at: "2026-06-24T10:00:00Z"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        429:
+          $ref: "#/components/responses/TooManyRequests"
+        500:
+          $ref: "#/components/responses/InternalServerError"
+  /fraud/review:
+    post:
+      tags:
+        - Manual Review
+      operationId: triggerFraudReview
+      summary: Flag a payment for manual review
+      description: "Places a payment in `review` status and queues it for manual inspection.\nThe payment is held and not settled until approved or rejected.\n"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - payment_id
+              properties:
+                payment_id:
+                  type: string
+                  description: ID of the payment to flag
+                  example: pay_1A2B3C4D
+                reason:
+                  type: string
+                  description: Reason for flagging
+                  maxLength: 500
+                  example: High velocity from this IP in the last 24 hours
+      responses:
+        201:
+          description: Fraud review created and payment held for manual inspection
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+              description: URL of the newly created fraud review resource
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FraudReview"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/InternalServerError"
+    get:
+      tags:
+        - Manual Review
+      operationId: listFraudReviews
+      summary: List fraud reviews
+      parameters:
+        - name: status
+          in: query
+          schema:
+
+            type: string
+            enum:
+              - pending
+              - approved
+              - rejected
+          description: Filter by review status
+        - name: payment_id
+          in: query
+          schema:
+
+            type: string
+          description: Filter by payment ID
+        - $ref: "#/components/parameters/CreatedGte"
+        - $ref: "#/components/parameters/CreatedLte"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/StartingAfter"
+      responses:
+        200:
+          description: Paginated list of fraud reviews
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FraudReviewList"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        500:
+          $ref: "#/components/responses/InternalServerError"
+  /fraud/review/{reviewId}:
+    get:
+      tags:
+        - Manual Review
+      operationId: getFraudReview
+      summary: Retrieve a fraud review
+      parameters:
+        - $ref: "#/components/parameters/ReviewId"
+      responses:
+        200:
+          description: Fraud review object
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FraudReview"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/InternalServerError"
+  /fraud/review/{reviewId}/approve:
+    post:
+      tags:
+        - Manual Review
+      operationId: approveFraudReview
+      summary: Approve a manually reviewed transaction
+      description: Approves the held payment and allows it to proceed to settlement.
+      parameters:
+        - $ref: "#/components/parameters/ReviewId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes:
+                  type: string
+                  description: Internal reviewer notes
+                  maxLength: 1000
+      responses:
+        200:
+          description: Transaction approved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FraudReview"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        422:
+          $ref: "#/components/responses/UnprocessableEntity"
+        500:
+          $ref: "#/components/responses/InternalServerError"
+  /fraud/review/{reviewId}/reject:
+    post:
+      tags:
+        - Manual Review
+      operationId: rejectFraudReview
+      summary: Reject a manually reviewed transaction
+      description: "Rejects and cancels the held payment, releasing any authorization hold."
+      parameters:
+        - $ref: "#/components/parameters/ReviewId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: Rejection reason for audit trail
+                  maxLength: 500
+                notes:
+                  type: string
+                  maxLength: 1000
+      responses:
+        200:
+          description: Transaction rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FraudReview"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        422:
+          $ref: "#/components/responses/UnprocessableEntity"
+        500:
+          $ref: "#/components/responses/InternalServerError"
+  /fraud/rules:
+    post:
+      tags:
+        - Fraud Rules
+      operationId: createFraudRule
+      summary: Create a fraud detection rule
+      description: "Rules are evaluated in ascending priority order. The first matching rule's\naction (`block`, `allow`, or `review`) is applied to the transaction.\n"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFraudRuleRequest"
+            examples:
+              block_high_risk_country:
+                summary: Block cards issued in high-risk countries
+                value:
+                  name: Block High-Risk Card Countries
+                  action: block
+                  conditions:
+                    - field: card_country
+                      operator: in
+                      value:
+
+                        - XX
+                        - YY
+                        - ZZ
+                  priority: 10
+              velocity_review:
+                summary: Review high velocity IPs
+                value:
+                  name: IP Velocity Review
+                  action: review
+                  conditions:
+                    - field: velocity_ip_count
+                      operator: gt
+                      value: 10
+                  priority: 20
+      responses:
+        201:
+          description: Fraud rule created
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+              description: URL of the newly created fraud rule resource
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FraudRule"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        422:
+          $ref: "#/components/responses/UnprocessableEntity"
+        500:
+          $ref: "#/components/responses/InternalServerError"
+    get:
+      tags:
+        - Fraud Rules
+      operationId: listFraudRules
+      summary: List fraud rules
+      parameters:
+        - name: action
+          in: query
+          schema:
+
+            type: string
+            enum:
+              - block
+              - allow
+              - review
+          description: Filter by rule action
+        - name: active
+          in: query
+          schema:
+
+            type: boolean
+          description: Filter by active/inactive status
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/StartingAfter"
+      responses:
+        200:
+          description: Fraud rule list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FraudRuleList"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        500:
+          $ref: "#/components/responses/InternalServerError"
+  /fraud/rules/{ruleId}:
+    get:
+      tags:
+        - Fraud Rules
+      operationId: getFraudRule
+      summary: Retrieve a fraud rule
+      parameters:
+        - $ref: "#/components/parameters/RuleId"
+      responses:
+        200:
+          description: Fraud rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FraudRule"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/InternalServerError"
+    put:
+      tags:
+        - Fraud Rules
+      operationId: updateFraudRule
+      summary: Update a fraud rule
+      parameters:
+        - $ref: "#/components/parameters/RuleId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateFraudRuleRequest"
+      responses:
+        200:
+          description: Updated fraud rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FraudRule"
+        400:
+          $ref: "#/components/responses/BadRequest"
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/InternalServerError"
+    delete:
+      tags:
+        - Fraud Rules
+      operationId: deleteFraudRule
+      summary: Delete a fraud rule
+      parameters:
+        - $ref: "#/components/parameters/RuleId"
+      responses:
+        204:
+          description: Fraud rule deleted successfully
+        401:
+          $ref: "#/components/responses/Unauthorized"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          $ref: "#/components/responses/NotFound"
+        500:
+          $ref: "#/components/responses/InternalServerError"
+components:
+  securitySchemes:
+    BasicAuth:
+      type: http
+      scheme: basic
+      description: "Use secret key as username, empty password"
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    ReviewId:
+      name: reviewId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Unique fraud review identifier
+    RuleId:
+      name: ruleId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Unique fraud rule identifier
+    CreatedGte:
+      name: "created[gte]"
+      in: query
+      schema:
+        type: string
+        format: date-time
+      description: "Filter by created date >= value (ISO 8601)"
+    CreatedLte:
+      name: "created[lte]"
+      in: query
+      schema:
+        type: string
+        format: date-time
+      description: Filter by created date <= value (ISO 8601)
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    StartingAfter:
+      name: starting_after
+      in: query
+      schema:
+        type: string
+      description: Cursor for forward pagination (ID of last item in previous page)
+  schemas:
+    Metadata:
+      type: object
+      additionalProperties:
+        type: string
+      maxProperties: 50
+      description: "Key-value pairs for custom data. Keys max 40 chars, values max 500 chars."
+    Address:
+      type: object
+      properties:
+        line1:
+          type: string
+          maxLength: 200
+        line2:
+          type: string
+          maxLength: 200
+        city:
+          type: string
+          maxLength: 100
+        state:
+          type: string
+          maxLength: 100
+        postal_code:
+          type: string
+          maxLength: 20
+        country:
+          type: string
+          pattern: "^[A-Z]{2}$"
+          description: ISO 3166-1 alpha-2 country code
+    ListMeta:
+      type: object
+      properties:
+        has_more:
+          type: boolean
+        total_count:
+          type: integer
+        url:
+          type: string
+    DeletedObject:
+      type: object
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+        deleted:
+          type: boolean
+          example: true
+    FraudScoreRequest:
+      type: object
+      required:
+        - payment_method
+        - amount
+        - currency
+      properties:
+        payment_method:
+          type: string
+          description: Payment method token or saved payment method ID
+        amount:
+          type: integer
+          description: Transaction amount in smallest currency unit
+          example: 5000
+        currency:
+          type: string
+          pattern: "^[A-Z]{3}$"
+          description: ISO 4217 currency code
+          example: USD
+        customer_ip:
+          type: string
+          format: ipv4
+          description: Customer IP address for geo and velocity checks
+        customer_email:
+          type: string
+          format: email
+          description: Customer email for email velocity checks
+        billing_address:
+          $ref: "#/components/schemas/Address"
+        user_agent:
+          type: string
+          description: Browser user-agent for device fingerprinting
+          maxLength: 500
+    FraudScore:
+      type: object
+      properties:
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: "Composite risk score. 0 = lowest risk, 100 = highest risk."
+        risk_level:
+          type: string
+          enum:
+            - low
+            - medium
+            - high
+            - very_high
+          description: "Human-readable risk band:\n- low: 0–24\n- medium: 25–59\n- high: 60–84\n- very_high: 85–100\n"
+        signals:
+          type: array
+          description: Individual risk signals that contributed to the score
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                description: Signal type identifier
+                enum:
+                  - ip_velocity
+                  - card_velocity
+                  - email_velocity
+                  - card_country_mismatch
+                  - billing_shipping_mismatch
+                  - high_risk_country
+                  - proxy_detected
+                  - unusual_amount
+                  - repeated_decline
+              description:
+                type: string
+                description: Human-readable explanation of the signal
+              severity:
+                type: string
+                enum:
+                  - low
+                  - medium
+                  - high
+        action:
+          type: string
+          enum:
+            - allow
+            - review
+            - block
+          description: Recommended action based on score and active fraud rules
+        matched_rule_id:
+          type: string
+          description: "ID of the first fraud rule that matched, if any"
+        created_at:
+          type: string
+          format: date-time
+    FraudReview:
+      type: object
+      properties:
+        id:
+          type: string
+          description: "Unique review identifier. Prefix `rev_`"
+          example: rev_1A2B3C
+        object:
+          type: string
+          example: fraud_review
+        payment_id:
+          type: string
+          description: Associated payment ID
+        status:
+          type: string
+          enum:
+            - pending
+            - approved
+            - rejected
+          description: Current review status
+        reason:
+          type: string
+          description: Reason the payment was flagged for review
+        notes:
+          type: string
+          description: Internal reviewer notes
+        reviewer_id:
+          type: string
+          description: ID of the reviewer who approved/rejected (if actioned)
+        reviewed_at:
+          type: string
+          format: date-time
+          description: Timestamp when the review was actioned
+        risk_score:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Risk score at the time of flagging
+        created_at:
+          type: string
+          format: date-time
+    FraudReviewList:
+      type: object
+      properties:
+        object:
+          type: string
+          example: list
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/FraudReview"
+        meta:
+          $ref: "#/components/schemas/ListMeta"
+    RuleCondition:
+      type: object
+      required:
+        - field
+        - operator
+        - value
+      properties:
+        field:
+          type: string
+          enum:
+            - card_country
+            - ip_country
+            - amount
+            - currency
+            - velocity_card_count
+            - velocity_email_count
+            - velocity_ip_count
+            - card_brand
+            - card_funding
+          description: Transaction attribute to evaluate
+        operator:
+          type: string
+          enum:
+            - eq
+            - neq
+            - gt
+            - gte
+            - lt
+            - lte
+            - in
+            - not_in
+          description: Comparison operator
+        value:
+          oneOf:
+            - type: string
+            - type: number
+            - type: array
+              items:
+
+                type: string
+          description: Value or list of values to compare against
+        window_seconds:
+          type: integer
+          description: Time window for velocity fields (in seconds)
+          example: 3600
+    CreateFraudRuleRequest:
+      type: object
+      required:
+        - name
+        - action
+        - conditions
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          description: Descriptive rule name
+        action:
+          type: string
+          enum:
+            - block
+            - allow
+            - review
+          description: Action to take when the rule matches
+        conditions:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items:
+            $ref: "#/components/schemas/RuleCondition"
+          description: All conditions must match (AND logic) for the rule to trigger
+        priority:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          description: Evaluation order. Lower numbers are evaluated first.
+          example: 10
+        description:
+          type: string
+          maxLength: 500
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+    UpdateFraudRuleRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        action:
+          type: string
+          enum:
+            - block
+            - allow
+            - review
+        conditions:
+          type: array
+          items:
+            $ref: "#/components/schemas/RuleCondition"
+        priority:
+          type: integer
+          minimum: 1
+          maximum: 1000
+        active:
+          type: boolean
+          description: Enable or disable the rule without deleting it
+        description:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+    FraudRule:
+      type: object
+      properties:
+        id:
+          type: string
+          description: "Unique rule identifier. Prefix `fr_`"
+          example: fr_4V5W6X
+        object:
+          type: string
+          example: fraud_rule
+        name:
+          type: string
+        action:
+          type: string
+          enum:
+            - block
+            - allow
+            - review
+        conditions:
+          type: array
+          items:
+            $ref: "#/components/schemas/RuleCondition"
+        priority:
+          type: integer
+        active:
+          type: boolean
+        match_count:
+          type: integer
+          description: Total number of transactions matched by this rule
+        description:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    FraudRuleList:
+      type: object
+      properties:
+        object:
+          type: string
+          example: list
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/FraudRule"
+        meta:
+          $ref: "#/components/schemas/ListMeta"
+    ApiErrorResponse:
+      type: object
+      required:
+        - success
+        - errorCode
+        - message
+        - timestamp
+      properties:
+        success:
+          type: boolean
+          example: false
+        errorCode:
+          type: string
+          description: Machine-readable error code
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          description: Human-readable error summary
+          example: Invalid request parameters
+        details:
+          type: object
+          description: Additional error context
+          properties:
+            param:
+              type: string
+              description: Request field that caused the error
+            doc_url:
+              type: string
+              format: uri
+              description: Link to documentation for this error
+        validationErrors:
+          type: array
+          description: Field-level validation errors
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of when the error occurred
+        path:
+          type: string
+          description: Request path that caused the error
+  responses:
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+          example:
+            success: false
+            errorCode: INVALID_REQUEST
+            message: Invalid request parameters
+            timestamp: "2026-06-25T10:00:00Z"
+            path: /v1/fraud/score
+    Unauthorized:
+      description: Authentication failed or missing
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+          example:
+            success: false
+            errorCode: UNAUTHORIZED
+            message: Authentication required
+            timestamp: "2026-06-25T10:00:00Z"
+            path: /v1/fraud/score
+    Forbidden:
+      description: Insufficient permissions for this operation
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+          example:
+            success: false
+            errorCode: FORBIDDEN
+            message: You do not have permission to perform this action
+            timestamp: "2026-06-25T10:00:00Z"
+            path: /v1/fraud/rules
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+          example:
+            success: false
+            errorCode: NOT_FOUND
+            message: The requested resource was not found
+            timestamp: "2026-06-25T10:00:00Z"
+            path: /v1/fraud/review/rev_unknown
+    UnprocessableEntity:
+      description: Business rule violation or semantic validation error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+          example:
+            success: false
+            errorCode: VALIDATION_ERROR
+            message: Request validation failed
+            validationErrors:
+              - field: payment_id
+                message: Payment is not in a reviewable state
+            timestamp: "2026-06-25T10:00:00Z"
+            path: /v1/fraud/review
+    TooManyRequests:
+      description: Rate limit exceeded
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds until rate limit resets
+        X-RateLimit-Limit:
+          schema:
+            type: integer
+          description: Maximum requests per window
+        X-RateLimit-Remaining:
+          schema:
+            type: integer
+          description: Remaining requests in current window
+        X-RateLimit-Reset:
+          schema:
+            type: string
+            format: date-time
+          description: Timestamp when the rate limit window resets
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+          example:
+            success: false
+            errorCode: RATE_LIMIT_EXCEEDED
+            message: Too many requests. Please retry after the indicated period.
+            timestamp: "2026-06-25T10:00:00Z"
+            path: /v1/fraud/score
+    InternalServerError:
+      description: Unexpected internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+          example:
+            success: false
+            errorCode: INTERNAL_SERVER_ERROR
+            message: An unexpected error occurred. Please try again later.
+            timestamp: "2026-06-25T10:00:00Z"
+            path: /v1/fraud/score
