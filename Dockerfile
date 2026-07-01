@@ -20,7 +20,6 @@ ENV LANGUAGE='en_US:en'
 # UBI OpenJDK images run as non-root (UID 185) and tolerate an arbitrary UID
 # assigned by OpenShift when files are group-owned by root (GID 0).
 COPY --chown=185:0 --from=builder /app/target/fraud-gateway-server.jar /deployments/app.jar
-RUN chmod -R g+rw /deployments
 
 # Expose the application port
 EXPOSE 8080
