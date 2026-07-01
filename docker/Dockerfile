@@ -4,7 +4,8 @@ FROM registry.access.redhat.com/ubi9/openjdk-21 AS builder
 USER root
 WORKDIR /app
 
-# Copy pom.xml and sources, then build
+# Copy pom.xml and sources, then build.
+# Build context is the repository root (see devfile.yaml / BuildConfig).
 COPY pom.xml .
 COPY src ./src
 
