@@ -42,7 +42,7 @@ java -jar target/fraud-gateway-server.jar
 ```
 
 - Swagger UI: http://localhost:8080/swagger-ui.html
-- OpenAPI JSON: http://localhost:8080/v3/api-docs
+- OpenAPI JSON: http://localhost:8080/api-docs
 - Health: http://localhost:8080/actuator/health
 
 ### Example

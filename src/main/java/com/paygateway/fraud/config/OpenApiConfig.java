@@ -34,7 +34,7 @@ public class OpenApiConfig {
                         .license(new License()
                                 .name("Proprietary")
                                 .url("https://paygateway.example.com/terms")))
-                .servers(List.of(new Server().url("/").description("This mock server")))
+                .servers(List.of(new Server().url("http://localhost:8080").description("Local development server")))
                 .addSecurityItem(new SecurityRequirement().addList("BasicAuth"))
                 .addSecurityItem(new SecurityRequirement().addList("BearerAuth"))
                 .components(new Components()
