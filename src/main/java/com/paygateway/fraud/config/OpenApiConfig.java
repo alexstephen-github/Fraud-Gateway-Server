@@ -7,11 +7,11 @@ import io.swagger.v3.oas.models.info.License;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.Components;
-import io.swagger.v3.oas.models.servers.Server;
+import jakarta.servlet.ServletContext;
+import org.springdoc.core.customizers.OpenApiCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-
-import java.util.List;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 @Configuration
 public class OpenApiConfig {
@@ -34,7 +34,6 @@ public class OpenApiConfig {
                         .license(new License()
                                 .name("Proprietary")
                                 .url("https://paygateway.example.com/terms")))
-                .servers(List.of(new Server().url("http://localhost:8080").description("Local development server")))
                 .addSecurityItem(new SecurityRequirement().addList("BasicAuth"))
                 .addSecurityItem(new SecurityRequirement().addList("BearerAuth"))
                 .components(new Components()

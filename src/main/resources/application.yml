@@ -18,6 +18,7 @@ springdoc:
     operations-sorter: method
     tags-sorter: alpha
     display-request-duration: true
+    use-root-path: true
 
 management:
   endpoints:
