@@ -48,7 +48,10 @@ public class FraudRulesController {
     }
 
     @GetMapping
-    @Operation(operationId = "listFraudRules", summary = "List fraud rules")
+    @Operation(operationId = "listFraudRules", summary = "List fraud rules",
+            description = "Returns a paginated list of all configured fraud detection rules. "
+                    + "Supports filtering by rule action (block, allow, review) and active status. "
+                    + "Results are ordered by priority in ascending order.")
     public FraudRuleList listFraudRules(
             @Parameter(description = "Filter by rule action")
             @RequestParam(required = false) RiskAction action,
@@ -61,21 +64,28 @@ public class FraudRulesController {
     }
 
     @GetMapping("/{ruleId}")
-    @Operation(operationId = "getFraudRule", summary = "Retrieve a fraud rule")
+    @Operation(operationId = "getFraudRule", summary = "Retrieve a fraud rule",
+            description = "Fetches the full details of a single fraud rule by its unique identifier, "
+                    + "including its conditions, priority, active status, and match count.")
     public FraudRule getFraudRule(
             @Parameter(description = "Unique fraud rule identifier") @PathVariable String ruleId) {
         return ruleService.get(ruleId);
     }
 
     @PutMapping(value = "/{ruleId}", consumes = MediaType.APPLICATION_JSON_VALUE)
-    @Operation(operationId = "updateFraudRule", summary = "Update a fraud rule")
+    @Operation(operationId = "updateFraudRule", summary = "Update a fraud rule",
+            description = "Updates an existing fraud rule. Supports partial updates — only the fields "
+                    + "provided in the request body will be modified. Use this to change conditions, "
+                    + "priority, action, or to enable/disable a rule without deleting it.")
     public FraudRule updateFraudRule(@PathVariable String ruleId,
                                      @Valid @RequestBody UpdateFraudRuleRequest request) {
         return ruleService.update(ruleId, request);
     }
 
     @DeleteMapping("/{ruleId}")
-    @Operation(operationId = "deleteFraudRule", summary = "Delete a fraud rule")
+    @Operation(operationId = "deleteFraudRule", summary = "Delete a fraud rule",
+            description = "Permanently removes a fraud rule. This action cannot be undone. "
+                    + "Consider disabling the rule (active=false) via update if you may need it again.")
     public ResponseEntity<Void> deleteFraudRule(@PathVariable String ruleId) {
         ruleService.delete(ruleId);
         return ResponseEntity.noContent().build();

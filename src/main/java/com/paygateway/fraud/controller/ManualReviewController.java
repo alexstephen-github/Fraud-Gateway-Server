@@ -48,7 +48,10 @@ public class ManualReviewController {
     }
 
     @GetMapping
-    @Operation(operationId = "listFraudReviews", summary = "List fraud reviews")
+    @Operation(operationId = "listFraudReviews", summary = "List fraud reviews",
+            description = "Returns a paginated list of fraud reviews. Supports filtering by review "
+                    + "status (pending, approved, rejected), payment ID, and creation date range. "
+                    + "Use cursor-based pagination with the starting_after parameter for large result sets.")
     public FraudReviewList listFraudReviews(
             @Parameter(description = "Filter by review status")
             @RequestParam(required = false) ReviewStatus status,
@@ -67,7 +70,10 @@ public class ManualReviewController {
     }
 
     @GetMapping("/{reviewId}")
-    @Operation(operationId = "getFraudReview", summary = "Retrieve a fraud review")
+    @Operation(operationId = "getFraudReview", summary = "Retrieve a fraud review",
+            description = "Fetches the full details of a single fraud review by its unique identifier, "
+                    + "including current status, associated payment, risk score at time of flagging, "
+                    + "and reviewer notes if the review has been actioned.")
     public FraudReview getFraudReview(
             @Parameter(description = "Unique fraud review identifier") @PathVariable String reviewId) {
         return reviewService.get(reviewId);
